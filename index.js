@@ -4,6 +4,9 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const stripe = require("stripe")(
+  process.env.PAYMENT_SECRET
+);
 const port = 5000;
 
 //middleware 
@@ -73,6 +76,41 @@ async function run() {
 
         }
     })
+
+    app.get('/menu/:id',verifyToken,verifyAdmin,async(req,res)=>{
+        try{
+          const id = {_id:new ObjectId(req.params.id)}
+            const result = await menuCollection.findOne(id)
+            res.send(result);
+        }catch(err){
+
+        }
+    })
+    app.patch('/menu/edit/:id',verifyToken,verifyAdmin,async(req,res)=>{
+        try{
+          const id = {_id:new ObjectId(req.params.id)}
+          const data = { $set: req.body }; 
+
+            const result = await menuCollection.updateOne(id, data)
+            
+            res.send(result);
+        }catch(err){
+
+        }
+    })
+
+    app.delete('/menu/:id',verifyToken,verifyAdmin,async(req,res)=>{
+     try{
+      const id = {_id:new ObjectId(req.params.id)}
+      const result = await menuCollection.deleteOne(id)
+      res.send(result)
+     }catch(err){
+
+     }
+      
+    })
+
+
     app.get('/reviews',async(req,res)=>{
         try{
             const result = await reviewsCollection.find().toArray();
@@ -166,6 +204,22 @@ async function run() {
       const user = req.body
       const token = jwt.sign(user, process.env.SECRET, { expiresIn: "5hr" });
       res.send({token})
+    })
+
+    //* payment intent
+    app.post('/create-payment-intent',async(req,res)=>{
+     try{
+       const {price} = req.body
+      const amount = parseInt(price*100)
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount,currency:"usd",payment_method_types:['card']
+      })
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+     }catch(err){
+      console.log(err);
+     }
     })
 
     await client.db("admin").command({ ping: 1 });
