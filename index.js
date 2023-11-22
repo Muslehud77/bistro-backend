@@ -286,7 +286,7 @@ app.get('/admin-stats',async(req,res)=>{
   //   0
   // ).toFixed(2);
   // console.log(revenue); 
-  const revenue = result[0]?.totalRevenue || 0;
+  const revenue = (result[0]?.totalRevenue || 0).toFixed(2);
 
 res.send({
   users,
