@@ -37,6 +37,7 @@ async function run() {
     const reviewsCollection = client.db("Bistro-Boss").collection("reviews");
     const cartCollection = client.db("Bistro-Boss").collection("cart");
     const userCollection = client.db("Bistro-Boss").collection("user");
+    const paymentCollection = client.db("Bistro-Boss").collection("payments");
 
     //* middleware
 
@@ -128,15 +129,22 @@ async function run() {
 
     //*cart
 
-    app.post('/cart',async(req,res)=>{
+    app.post('/cart',verifyToken,async(req,res)=>{
+   
       const cart = req.body
       const result = await cartCollection.insertOne(cart)
       res.send(result)
     })
 
-    app.get('/carts',async(req,res)=>{
-      const result = await cartCollection.find().toArray();
-      res.send(result)
+    app.get('/carts',verifyToken,async(req,res)=>{
+    if(req.decoded.email === req.query.email){
+      const query = {
+        userEmail: req.query.email,
+      };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    }
+         
     })
 
     app.delete('/cart/:id',async(req,res)=>{
@@ -211,9 +219,12 @@ async function run() {
      try{
        const {price} = req.body
       const amount = parseInt(price*100)
+
       const paymentIntent = await stripe.paymentIntents.create({
-        amount,currency:"usd",payment_method_types:['card']
-      })
+        amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
       res.send({
         clientSecret: paymentIntent.client_secret
       })
@@ -221,6 +232,82 @@ async function run() {
       console.log(err);
      }
     })
+
+app.post('/payments',async(req,res)=>{
+  const paymentInfo = req.body
+  const paymentResult = await paymentCollection.insertOne(paymentInfo)
+
+  //deleting the cart items after the payment
+  const query = {_id:{
+    $in: paymentInfo.cartIds.map(id=> new ObjectId(id))
+  }}
+
+  const deleteCart = await cartCollection.deleteMany(query)
+
+  res.send({paymentResult,deleteCart})
+})
+
+app.get('/paymentHistory',verifyToken,async(req,res)=>{
+  if(req.query.email === req.decoded.email){
+    const query = { email: req.query.email };
+    const paymentHistory = await paymentCollection.find(query).toArray();
+    res.send(paymentHistory);
+  }
+
+
+})
+
+//* stats and Analytics.
+
+app.get('/admin-stats',async(req,res)=>{
+
+  const users = await userCollection.estimatedDocumentCount()
+  const menuItems = await menuCollection.estimatedDocumentCount();
+  const orders = await paymentCollection.estimatedDocumentCount()
+
+
+  const pipeline = [
+    {
+      $group: {
+        _id: null,
+        totalRevenue : {$sum: '$amount'}
+      }
+    }
+  ]
+
+  const result = await paymentCollection.aggregate(pipeline).toArray()
+
+  //this is not good practice
+
+
+  // const payments = await paymentCollection.find().toArray();
+  // const revenue = payments.reduce(
+  //   (acc, payment) => acc + parseFloat(payment.amount),
+  //   0
+  // ).toFixed(2);
+  // console.log(revenue); 
+  const revenue = result[0]?.totalRevenue || 0;
+
+res.send({
+  users,
+  menuItems,
+  orders,
+  revenue
+});
+
+
+
+
+
+})
+
+
+
+
+
+
+
+
 
     await client.db("admin").command({ ping: 1 });
     console.log(
