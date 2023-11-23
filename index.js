@@ -259,7 +259,7 @@ app.get('/paymentHistory',verifyToken,async(req,res)=>{
 
 //* stats and Analytics.
 
-app.get('/admin-stats',async(req,res)=>{
+app.get('/admin-stats',verifyToken,verifyAdmin,async(req,res)=>{
 
   const users = await userCollection.estimatedDocumentCount()
   const menuItems = await menuCollection.estimatedDocumentCount();
@@ -295,10 +295,49 @@ res.send({
   revenue
 });
 
+})
 
+app.get('/items-sold',verifyToken,verifyAdmin,async(req,res)=>{
+  
+  const payments = await paymentCollection
+    .aggregate([
+      {
+        $unwind: "$itemIds",
+      },
+      {
+        $lookup: {
+          from: "menu",
+          let: { menuItemId: { $toObjectId: "$itemIds" } }, // Convert menuItemIds to ObjectId
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$$menuItemId", "$_id"], // Compare converted menuItemIds with _id in menuCollection
+                },
+              },
+            },
+          ],
+          as: "menuItems", // new array created by the query id
+        },
+      },
+      {
+        $unwind: "$menuItems" // destructuring/unwinding from the array
+      },
+      { // setting up the new array
+        $group:{
+          _id: '$menuItems.category',
+          quantity: {
+            $sum: 1 // getting the total item sold
+          },
+          revenue: {$sum: '$menuItems.price'} // total revenue from the item
+        }
+      }
+    ])
+    .toArray();
+  
+  res.send(payments);
 
-
-
+  
 })
 
 
@@ -309,7 +348,7 @@ res.send({
 
 
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
